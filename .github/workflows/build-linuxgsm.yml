@@ -1,0 +1,206 @@
+name: Build and Push LinuxGSM Base Image
+
+on:
+  workflow_dispatch:
+    inputs:
+      push_image:
+        description: 'Push image to registry after build'
+        required: false
+        type: boolean
+        default: true
+      force_rebuild:
+        description: 'Force rebuild without cache'
+        required: false
+        type: boolean
+        default: false
+      image_tag:
+        description: 'Additional tag for the image (optional)'
+        required: false
+        type: string
+        default: ''
+
+env:
+  DOCKER_REPO: ${{ secrets.DOCKER_REPO }}
+  DOCKER_BUILDKIT: 1
+  COMPOSE_DOCKER_CLI_BUILD: 1
+
+jobs:
+  build-linuxgsm:
+    runs-on: [self-hosted, linux, amd64]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: atriarch
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver: docker-container
+          buildkitd-flags: --allow-insecure-entitlement security.insecure
+
+      - name: Log in to Docker registry
+        run: |
+          echo "${{ secrets.DOCKER_PASSWORD }}" | docker login ${{ env.DOCKER_REPO }} --username "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+
+      - name: Determine cache strategy
+        id: cache-strategy
+        run: |
+          if [ "${{ inputs.force_rebuild }}" = "true" ]; then
+            echo "cache-args=--no-cache" >> $GITHUB_OUTPUT
+            echo "🔄 Force rebuild enabled - no cache will be used"
+          else
+            echo "cache-args=--cache-from ${{ env.DOCKER_REPO }}/linuxgsm:os" >> $GITHUB_OUTPUT
+            echo "📦 Using cache from previous builds"
+          fi
+
+      - name: Create Dockerfile if missing
+        run: |
+          if [ ! -f "Dockerfile" ]; then
+            echo "📝 Creating LinuxGSM Dockerfile..."
+            cat > Dockerfile << 'DOCKERFILE_END'
+          # LinuxGSM Base Image
+          FROM ubuntu:20.04
+          
+          LABEL maintainer="Atriarch Systems <postmaster@mail.atriarch.systems>"
+          LABEL description="LinuxGSM Base Image for Game Server Management"
+          
+          # Set environment variables
+          ENV DEBIAN_FRONTEND=noninteractive
+          ENV LGSM_GITHUBUSER="GameServerManagers"
+          ENV LGSM_GITHUBREPO="LinuxGSM"
+          ENV LGSM_GITHUBBRANCH="master"
+          
+          # Install base dependencies
+          RUN apt-get update && apt-get install -y \
+              wget curl ca-certificates file util-linux \
+              python3 python3-pip tar bzip2 gzip unzip \
+              binutils bc jq tmux netcat lib32gcc-s1 \
+              lib32stdc++6 steamcmd \
+              && apt-get clean \
+              && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+          
+          # Create lgsm user
+          RUN adduser --disabled-password --home /home/lgsm --gecos "" lgsm \
+              && usermod -G tty lgsm
+          
+          # Switch to lgsm user
+          USER lgsm
+          WORKDIR /home/lgsm
+          
+          # Install LinuxGSM
+          RUN wget -O linuxgsm.sh https://linuxgsm.sh \
+              && chmod +x linuxgsm.sh
+          
+          # Create entrypoint and health check scripts
+          RUN echo '#!/bin/bash\ncd /home/lgsm\nexec "$@"' > /home/lgsm/entrypoint.sh \
+              && chmod +x /home/lgsm/entrypoint.sh \
+              && echo '#!/bin/bash\nexit 0' > /home/lgsm/entrypoint-healthcheck.sh \
+              && chmod +x /home/lgsm/entrypoint-healthcheck.sh \
+              && date > /home/lgsm/build-time.txt
+          
+          EXPOSE 7777-7784/tcp 7777-7784/udp
+          HEALTHCHECK --interval=1m --timeout=30s --start-period=5m --retries=3 CMD /home/lgsm/entrypoint-healthcheck.sh
+          ENTRYPOINT ["/home/lgsm/entrypoint.sh"]
+          CMD ["/bin/bash"]
+          DOCKERFILE_END
+          fi
+
+      - name: Build LinuxGSM base image
+        id: build
+        run: |
+          # Define image tags
+          base_tag="${{ env.DOCKER_REPO }}/linuxgsm:os"
+          build_tag="${{ env.DOCKER_REPO }}/linuxgsm:v1.0.${{ github.run_number }}"
+          latest_tag="${{ env.DOCKER_REPO }}/linuxgsm:latest"
+          
+          # Add custom tag if provided
+          custom_tags=""
+          if [ -n "${{ inputs.image_tag }}" ]; then
+            custom_tag="${{ env.DOCKER_REPO }}/linuxgsm:${{ inputs.image_tag }}"
+            custom_tags="-t $custom_tag"
+          fi
+          
+          echo "🚀 Building LinuxGSM base image..."
+          echo "Base tag: $base_tag"
+          echo "Build tag: $build_tag" 
+          echo "Latest tag: $latest_tag"
+          
+          # Build the image
+          if docker build \
+            ${{ steps.cache-strategy.outputs.cache-args }} \
+            --label "version=v1.0.${{ github.run_number }}" \
+            --label "build-date=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+            --label "git-commit=${{ github.sha }}" \
+            --build-arg BUILDKIT_INLINE_CACHE=1 \
+            -t "$base_tag" \
+            -t "$build_tag" \
+            -t "$latest_tag" \
+            $custom_tags \
+            .; then
+            
+            echo "✅ Successfully built LinuxGSM base image"
+            echo "build-success=true" >> $GITHUB_OUTPUT
+            
+            # Show image info
+            docker images --filter "reference=${{ env.DOCKER_REPO }}/linuxgsm" --format "table {{.Repository}}:{{.Tag}}\t{{.Size}}\t{{.CreatedAt}}"
+            
+          else
+            echo "❌ Failed to build LinuxGSM base image"
+            echo "build-success=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+
+      - name: Test image functionality
+        if: steps.build.outputs.build-success == 'true'
+        run: |
+          echo "🧪 Testing LinuxGSM base image functionality..."
+          
+          # Test basic functionality
+          docker run --rm ${{ env.DOCKER_REPO }}/linuxgsm:os /bin/bash -c \
+            "echo 'Testing LinuxGSM installation...' && \
+             ls -la /home/lgsm/ && \
+             which steamcmd && \
+             python3 --version && \
+             echo 'Base image test completed successfully'"
+          
+          echo "✅ Image functionality test passed"
+
+      - name: Push images to registry
+        if: inputs.push_image && steps.build.outputs.build-success == 'true'
+        run: |
+          echo "📤 Pushing images to registry..."
+          
+          # Push all tags
+          docker push ${{ env.DOCKER_REPO }}/linuxgsm:os
+          docker push ${{ env.DOCKER_REPO }}/linuxgsm:v1.0.${{ github.run_number }}
+          docker push ${{ env.DOCKER_REPO }}/linuxgsm:latest
+          
+          if [ -n "${{ inputs.image_tag }}" ]; then
+            docker push ${{ env.DOCKER_REPO }}/linuxgsm:${{ inputs.image_tag }}
+          fi
+          
+          echo "✅ Successfully pushed all LinuxGSM images"
+
+      - name: Cleanup and logout
+        if: always()
+        run: |
+          # Clean up build cache if needed
+          docker builder prune -f || echo "Builder prune completed"
+          
+          # Logout from registry
+          docker logout ${{ env.DOCKER_REPO }} || echo "Already logged out"
+
+      - name: Build summary
+        if: always()
+        run: |
+          echo "======================================"
+          echo "LINUXGSM BUILD SUMMARY"
+          echo "======================================"
+          echo "Build Success: ${{ steps.build.outputs.build-success }}"
+          echo "Push Enabled: ${{ inputs.push_image }}"
+          echo "Force Rebuild: ${{ inputs.force_rebuild }}"
+          echo "Custom Tag: ${{ inputs.image_tag }}"
+          echo "Build Number: ${{ github.run_number }}"
+          echo "Git SHA: ${{ github.sha }}"
+          echo "======================================"

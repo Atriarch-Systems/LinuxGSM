@@ -1,9 +1,11 @@
 name: Issue Labeler
 on:
-  issues:
-    types:
-      - opened
-      - edited
+  workflow_dispatch:
+  # Auto-triggers disabled - manual run only
+  # issues:
+  #   types:
+  #     - opened
+  #     - edited
 
 permissions:
   issues: write

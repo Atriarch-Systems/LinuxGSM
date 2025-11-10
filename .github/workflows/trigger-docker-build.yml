@@ -1,8 +1,10 @@
 name: Trigger Docker Build
 on:
-  release:
-    types:
-      - published
+  workflow_dispatch:
+  # Auto-triggers disabled - manual run only
+  # release:
+  #   types:
+  #     - published
 
 jobs:
   trigger_build_docker-linuxgsm:

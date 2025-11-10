@@ -1,8 +1,10 @@
 name: Potential Duplicates
 on:
-  issues:
-    types:
-      - opened
+  workflow_dispatch:
+  # Auto-triggers disabled - manual run only
+  # issues:
+  #   types:
+  #     - opened
 jobs:
   potential-duplicates:
     if: github.repository_owner == 'GameServerManagers'

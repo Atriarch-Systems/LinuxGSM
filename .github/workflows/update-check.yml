@@ -2,9 +2,10 @@ name: Update Check
 # This action will check that LinuxGSM is picking up game server config and parameter variables.
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - develop
+  # Auto-triggers disabled - manual run only
+  # push:
+  #   branches:
+  #     - develop
 
 concurrency:
   group: update-check-${{ github.ref_name }}

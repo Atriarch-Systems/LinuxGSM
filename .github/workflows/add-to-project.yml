@@ -1,9 +1,11 @@
 name: Add to Project
 on:
-  issues:
-    types:
-      - opened
-      - labeled
+  workflow_dispatch:
+  # Auto-triggers disabled - manual run only
+  # issues:
+  #   types:
+  #     - opened
+  #     - labeled
 
 jobs:
   add-to-project:

@@ -2,9 +2,10 @@
 name: Details Check
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - develop
+  # Auto-triggers disabled - manual run only
+  # push:
+  #   branches:
+  #     - develop
 
 concurrency:
   group: details-check-${{ github.ref_name }}

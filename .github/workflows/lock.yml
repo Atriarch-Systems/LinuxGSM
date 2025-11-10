@@ -1,8 +1,9 @@
 name: Lock Threads
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "0 0 * * 1"
+  # Auto-triggers disabled - manual run only
+  # schedule:
+  #   - cron: "0 0 * * 1"
 
 permissions:
   issues: write

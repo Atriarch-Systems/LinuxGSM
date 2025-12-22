@@ -1,0 +1,49 @@
+name: Upload LinuxGSM Assets to CDN
+# Uploads key LinuxGSM files to the Atriarch CDN for use by docker builds
+# This prevents hitting GitHub raw URLs during container builds
+
+on:
+  push:
+    branches: [atriarch]
+    paths:
+      - 'linuxgsm.sh'
+      - 'lgsm/data/**'
+  workflow_dispatch:
+
+jobs:
+  upload-to-cdn:
+    if: github.repository == 'Atriarch-Systems/LinuxGSM'
+    runs-on: [self-hosted, Linux, X64, amd64, arc-amd64]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: atriarch
+
+      - name: Upload linuxgsm.sh to CDN
+        run: |
+          curl -X PUT "https://cdn.atriarch.systems/lgsm/linuxgsm.sh" \
+            -H "Authorization: Bearer ${{ secrets.CDN_UPLOAD_TOKEN }}" \
+            -H "Content-Type: text/plain" \
+            --data-binary @linuxgsm.sh
+        continue-on-error: true
+
+      - name: Upload data CSV files to CDN
+        run: |
+          for file in lgsm/data/*.csv; do
+            filename=$(basename "$file")
+            echo "Uploading $filename..."
+            curl -X PUT "https://cdn.atriarch.systems/lgsm/data/$filename" \
+              -H "Authorization: Bearer ${{ secrets.CDN_UPLOAD_TOKEN }}" \
+              -H "Content-Type: text/csv" \
+              --data-binary @"$file"
+          done
+        continue-on-error: true
+
+      - name: Summary
+        run: |
+          echo "## CDN Upload Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "The following files have been uploaded to cdn.atriarch.systems:" >> $GITHUB_STEP_SUMMARY
+          echo "- /lgsm/linuxgsm.sh" >> $GITHUB_STEP_SUMMARY
+          echo "- /lgsm/data/*.csv (dependency lists)" >> $GITHUB_STEP_SUMMARY

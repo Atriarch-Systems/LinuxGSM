@@ -5,6 +5,12 @@ name: Upload LinuxGSM Assets to CDN
 # Uses OAuth2 Client Credentials flow:
 # 1. Get access token from IdentityServer using CDN_CLIENT_ID and CDN_CLIENT_SECRET
 # 2. Use access token to upload files to CDN API
+#
+# Required secrets:
+# - CDN_TOKEN_ENDPOINT: https://ids.atriarch.systems/connect/token
+# - CDN_CLIENT_ID: github-cdn-uploader
+# - CDN_CLIENT_SECRET: (the client secret)
+# - CDN_SCOPE: AtriarchCdn_Write
 
 on:
   push:
@@ -98,4 +104,4 @@ jobs:
           echo "- /lgsm/linuxgsm.sh" >> $GITHUB_STEP_SUMMARY
           echo "- /lgsm/data/*.csv (dependency lists)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "If CDN upload failed, builds will fall back to GitHub URLs." >> $GITHUB_STEP_SUMMARY
+          echo "If CDN upload failed, builds will fall back to Atriarch-Systems/LinuxGSM GitHub URLs." >> $GITHUB_STEP_SUMMARY

@@ -1,6 +1,10 @@
 name: Upload LinuxGSM Assets to CDN
 # Uploads key LinuxGSM files to the Atriarch CDN for use by docker builds
 # This prevents hitting GitHub raw URLs during container builds
+#
+# Uses OAuth2 Client Credentials flow:
+# 1. Get access token from IdentityServer using CDN_CLIENT_ID and CDN_CLIENT_SECRET
+# 2. Use access token to upload files to CDN API
 
 on:
   push:
@@ -20,23 +24,69 @@ jobs:
         with:
           ref: atriarch
 
+      - name: Get OAuth2 Access Token
+        id: get-token
+        run: |
+          # Get access token using client credentials flow
+          TOKEN_RESPONSE=$(curl -s -X POST "${{ secrets.CDN_TOKEN_ENDPOINT }}" \
+            -H "Content-Type: application/x-www-form-urlencoded" \
+            -d "grant_type=client_credentials" \
+            -d "client_id=${{ secrets.CDN_CLIENT_ID }}" \
+            -d "client_secret=${{ secrets.CDN_CLIENT_SECRET }}" \
+            -d "scope=${{ secrets.CDN_SCOPE }}")
+          
+          ACCESS_TOKEN=$(echo "$TOKEN_RESPONSE" | jq -r '.access_token')
+          
+          if [ "$ACCESS_TOKEN" == "null" ] || [ -z "$ACCESS_TOKEN" ]; then
+            echo "Failed to get access token"
+            echo "$TOKEN_RESPONSE"
+            exit 1
+          fi
+          
+          # Mask the token in logs
+          echo "::add-mask::$ACCESS_TOKEN"
+          echo "access_token=$ACCESS_TOKEN" >> $GITHUB_OUTPUT
+          echo "Successfully obtained access token"
+
       - name: Upload linuxgsm.sh to CDN
         run: |
-          curl -X PUT "https://cdn.atriarch.systems/lgsm/linuxgsm.sh" \
-            -H "Authorization: Bearer ${{ secrets.CDN_UPLOAD_TOKEN }}" \
-            -H "Content-Type: text/plain" \
-            --data-binary @linuxgsm.sh
+          echo "Uploading linuxgsm.sh..."
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X PUT "https://cdn.atriarch.systems/api/files/lgsm/linuxgsm.sh" \
+            -H "Authorization: Bearer ${{ steps.get-token.outputs.access_token }}" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary @linuxgsm.sh)
+          
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | head -n -1)
+          
+          if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
+            echo "✓ linuxgsm.sh uploaded successfully"
+          else
+            echo "✗ Failed to upload linuxgsm.sh (HTTP $HTTP_CODE)"
+            echo "$BODY"
+          fi
         continue-on-error: true
 
       - name: Upload data CSV files to CDN
         run: |
           for file in lgsm/data/*.csv; do
-            filename=$(basename "$file")
-            echo "Uploading $filename..."
-            curl -X PUT "https://cdn.atriarch.systems/lgsm/data/$filename" \
-              -H "Authorization: Bearer ${{ secrets.CDN_UPLOAD_TOKEN }}" \
-              -H "Content-Type: text/csv" \
-              --data-binary @"$file"
+            if [ -f "$file" ]; then
+              filename=$(basename "$file")
+              echo "Uploading $filename..."
+              
+              RESPONSE=$(curl -s -w "\n%{http_code}" -X PUT "https://cdn.atriarch.systems/api/files/lgsm/data/$filename" \
+                -H "Authorization: Bearer ${{ steps.get-token.outputs.access_token }}" \
+                -H "Content-Type: text/csv" \
+                --data-binary @"$file")
+              
+              HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+              
+              if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
+                echo "✓ $filename uploaded"
+              else
+                echo "✗ Failed to upload $filename (HTTP $HTTP_CODE)"
+              fi
+            fi
           done
         continue-on-error: true
 
@@ -47,3 +97,5 @@ jobs:
           echo "The following files have been uploaded to cdn.atriarch.systems:" >> $GITHUB_STEP_SUMMARY
           echo "- /lgsm/linuxgsm.sh" >> $GITHUB_STEP_SUMMARY
           echo "- /lgsm/data/*.csv (dependency lists)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "If CDN upload failed, builds will fall back to GitHub URLs." >> $GITHUB_STEP_SUMMARY

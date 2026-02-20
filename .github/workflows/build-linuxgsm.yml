@@ -67,9 +67,9 @@ jobs:
           
           # Set environment variables
           ENV DEBIAN_FRONTEND=noninteractive
-          ENV LGSM_GITHUBUSER="GameServerManagers"
+          ENV LGSM_GITHUBUSER="Atriarch-Systems"
           ENV LGSM_GITHUBREPO="LinuxGSM"
-          ENV LGSM_GITHUBBRANCH="master"
+          ENV LGSM_GITHUBBRANCH="atriarch"
           
           # Install base dependencies
           RUN apt-get update && apt-get install -y \

@@ -21,11 +21,11 @@ fn_default_config_remote() {
 	echo -e ""
 	echo -e "${bold}${lightyellow}Downloading ${gamename} Configs${default}"
 	fn_messages_separator
-	echo -e "Downloading default configs from: ${italic}https://github.com/GameServerManagers/Game-Server-Configs${default}"
+	echo -e "Downloading default configs from: ${italic}https://github.com/Atriarch-Systems/Game-Server-Configs${default}"
 	echo -e ""
 	fn_sleep_time_1
 	mkdir -p "${lgsmdir}/config-default/config-game"
-	githuburl="https://raw.githubusercontent.com/Demonslyr/Game-Server-Configs/main"
+	githuburl="https://raw.githubusercontent.com/Atriarch-Systems/Game-Server-Configs/main"
 	for config in "${array_configs[@]}"; do
 		# Downloads default configs from Game-Server-Configs repo to lgsm/config-default.
 		fn_fetch_file "${githuburl}/${shortname}/${config}" "${remote_fileurl_backup}" "GitHub" "Bitbucket" "${lgsmdir}/config-default/config-game" "${config}" "nochmodx" "norun" "forcedl" "nohash"

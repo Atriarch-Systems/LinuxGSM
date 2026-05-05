@@ -1,71 +1,63 @@
 name: Merge Master to Atriarch
-# This workflow merges changes from master (synced from upstream) into the atriarch branch
-# Run this manually when you want to uptake upstream changes
+# Runs after Sync Upstream to Master completes. Merges newly-mirrored upstream
+# commits from master into the customization branch atriarch.
 
 on:
+  workflow_run:
+    workflows: ["Sync Upstream to Master"]
+    types:
+      - completed
   workflow_dispatch:
-    inputs:
-      merge_strategy:
-        description: 'Merge strategy to use'
-        required: true
-        default: 'merge'
-        type: choice
-        options:
-          - merge
-          - rebase
+
+permissions:
+  contents: read  # App token is used for writes; GITHUB_TOKEN stays read-only
 
 jobs:
   merge-to-atriarch:
     if: github.repository == 'Atriarch-Systems/LinuxGSM'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, arm64]
     steps:
-      - name: Checkout atriarch branch
+      - name: Generate app token
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.SYNC_APP_ID }}
+          private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
+
+      - name: Checkout atriarch
         uses: actions/checkout@v4
         with:
           ref: atriarch
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ steps.app-token.outputs.token }}
 
       - name: Configure Git
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "atriarch-fork-sync[bot]"
+          git config user.email "atriarch-fork-sync[bot]@users.noreply.github.com"
 
       - name: Fetch master
         run: git fetch origin master
 
-      - name: Show incoming changes
+      - name: Check for new commits
+        id: check
         run: |
-          echo "=== Commits to be merged ==="
-          git log --oneline atriarch..origin/master | head -50
-          echo ""
-          echo "=== Files changed ==="
-          git diff --stat atriarch..origin/master | tail -20
+          MASTER_SHA=$(git rev-parse origin/master)
+          MERGE_BASE=$(git merge-base HEAD origin/master)
+          if [ "$MASTER_SHA" != "$MERGE_BASE" ]; then
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            COMMIT_COUNT=$(git rev-list --count HEAD..origin/master)
+            echo "commit_count=$COMMIT_COUNT" >> $GITHUB_OUTPUT
+          else
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+          fi
 
       - name: Merge master into atriarch
-        if: ${{ inputs.merge_strategy == 'merge' }}
+        if: steps.check.outputs.has_changes == 'true'
         run: |
           git merge origin/master --no-edit -m "chore: merge upstream changes from master"
+          git push origin atriarch
 
-      - name: Rebase atriarch onto master
-        if: ${{ inputs.merge_strategy == 'rebase' }}
-        run: |
-          git rebase origin/master
-
-      - name: Push changes
-        run: |
-          if [ "${{ inputs.merge_strategy }}" == "rebase" ]; then
-            git push origin atriarch --force-with-lease
-          else
-            git push origin atriarch
-          fi
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Summary
-        run: |
-          echo "## Merge Complete" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Strategy: ${{ inputs.merge_strategy }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "The atriarch branch has been updated with the latest upstream changes." >> $GITHUB_STEP_SUMMARY
+      - name: No changes
+        if: steps.check.outputs.has_changes == 'false'
+        run: echo "Atriarch branch is already up to date with master"

@@ -1,10 +1,13 @@
 name: Trigger Docker Build
+
 on:
   workflow_dispatch:
   # Auto-triggers disabled - manual run only
   # release:
   #   types:
   #     - published
+
+permissions: {}
 
 jobs:
   trigger_build_docker-linuxgsm:
@@ -18,7 +21,7 @@ jobs:
           owner: GameServerManagers
           repo: docker-linuxgsm
           github_token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
-          workflow_file_name: docker-publish.yml
+          workflow_file_name: action-docker-publish.yml
 
   trigger_build_docker-gameserver:
     if: github.repository_owner == 'GameServerManagers'
@@ -32,4 +35,4 @@ jobs:
           owner: GameServerManagers
           repo: docker-gameserver
           github_token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
-          workflow_file_name: docker-publish.yml
+          workflow_file_name: action-docker-publish.yml

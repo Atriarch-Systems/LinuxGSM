@@ -1,9 +1,9 @@
 <p align="center">
-	<a href="https://linuxgsm.com"><img src="https://i.imgur.com/Eoh1jsi.jpg" alt="LinuxGSM">
-	<a href="https://github.com/Atriarch-Systems/LinuxGSM/actions"><img alt="GitHub Workflow Status" src="https://img.shields.io/github/actions/workflow/status/Atriarch-Systems/LinuxGSM/git-sync.yml?style=flat-square"></a>
-	<a href="https://linuxgsm.com/discord"><img alt="Discord" src="https://img.shields.io/discord/127498813903601664?color=5865F2&label=%20&logo=discord&logoColor=ffffff&style=flat-square"></a>
-	<a href="https://developer.valvesoftware.com/wiki/SteamCMD"><img src="https://img.shields.io/badge/SteamCMD-000000?style=flat-square&amp;logo=Steam&amp;logoColor=white" alt="SteamCMD"></a>
-	<a href="https://github.com/Atriarch-Systems/LinuxGSM/blob/master/LICENSE.md"><img src="https://img.shields.io/github/license/Atriarch-Systems/LinuxGSM?style=flat-square" alt="MIT License"></a>
+  <a href="https://linuxgsm.com"><img src="https://i.imgur.com/Eoh1jsi.jpg" alt="LinuxGSM">
+  <a href="https://github.com/Atriarch-Systems/LinuxGSM/actions"><img alt="GitHub Workflow Status" src="https://img.shields.io/github/actions/workflow/status/Atriarch-Systems/LinuxGSM/sync-upstream.yml?branch=atriarch&style=flat-square"></a>
+  <a href="https://linuxgsm.com/discord"><img alt="Discord" src="https://img.shields.io/discord/127498813903601664?color=5865F2&label=%20&logo=discord&logoColor=ffffff&style=flat-square"></a>
+  <a href="https://developer.valvesoftware.com/wiki/SteamCMD"><img src="https://img.shields.io/badge/SteamCMD-000000?style=flat-square&amp;logo=Steam&amp;logoColor=white" alt="SteamCMD"></a>
+  <a href="https://github.com/Atriarch-Systems/LinuxGSM/blob/atriarch/LICENSE.md"><img src="https://img.shields.io/github/license/Atriarch-Systems/LinuxGSM?style=flat-square" alt="MIT License"></a>
 </p>
 
 [LinuxGSM](https://linuxgsm.com) is the command-line tool for quick, simple deployment and management of Linux dedicated game servers. This is a fork maintained by Atriarch Systems. The upstream project is maintained by [GameServerManagers](https://github.com/GameServerManagers/LinuxGSM).
@@ -16,21 +16,21 @@ Traditionally game servers are not easy to manage yourself. Admins often have to
 
 100+ game servers supported
 
--   :truck: Installer
--   :mag: Monitor
--   :phone: Alerts
--   :cloud: Updater
--   :blue_book: Server Details
--   :floppy_disk: Backup
--   :computer: Console
+- :truck: Installer
+- :mag: Monitor
+- :phone: Alerts
+- :cloud: Updater
+- :blue_book: Server Details
+- :floppy_disk: Backup
+- :computer: Console
 
 ## :penguin: Compatibility
 
 LinuxGSM will run on popular distros as long as the minimum requirements are met.
 
--   Ubuntu
--   Debian
--   CentOS
+- Ubuntu
+- Debian
+- CentOS
 
 Other distros are likely to work but are not fully tested.
 

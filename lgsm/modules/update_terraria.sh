@@ -10,8 +10,9 @@ moduleselfname="$(basename "$(readlink -f "${BASH_SOURCE[0]}")")"
 
 fn_update_dl() {
 	# Download and extract files to serverfiles.
-	# Primary: Atriarch CDN mirror; backup: official terraria.org download.
-	fn_fetch_file "https://cdn.atriarch.systems/terraria/${remotebuildfilename}" "${remotebuildurl}" "" "" "${tmpdir}" "${remotebuildfilename}" "nochmodx" "norun" "force" ""
+	# Primary: Atriarch CDN mirror (S3 plane, served via File/{appId}/o/{key});
+	# backup: official terraria.org download.
+	fn_fetch_file "https://cdn.atriarch.systems/File/agent/o/terraria/${remotebuildfilename}" "${remotebuildurl}" "" "" "${tmpdir}" "${remotebuildfilename}" "nochmodx" "norun" "force" ""
 	# The zip contains <version>/{Windows,Linux,Mac}; the server needs Linux/* at
 	# the serverfiles root (matches executable="./TerrariaServer").
 	extracttmp="${tmpdir}/terraria-extract"

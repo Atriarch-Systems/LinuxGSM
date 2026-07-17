@@ -705,6 +705,11 @@ update_steamcmd.sh() {
 	fn_fetch_module
 }
 
+update_terraria.sh() {
+	modulefile="${FUNCNAME[0]}"
+	fn_fetch_module
+}
+
 update_ts3.sh() {
 	modulefile="${FUNCNAME[0]}"
 	fn_fetch_module

@@ -29,6 +29,8 @@ elif [ "${shortname}" == "mta" ]; then
 	update_mta.sh
 elif [ "${shortname}" == "jk2" ]; then
 	update_jk2.sh
+elif [ "${shortname}" == "terraria" ]; then
+	update_terraria.sh
 elif [ "${shortname}" == "vints" ]; then
 	update_vints.sh
 elif [ "${shortname}" == "ut99" ]; then

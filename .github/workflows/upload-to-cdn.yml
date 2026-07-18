@@ -9,11 +9,8 @@ name: Upload LinuxGSM Assets to CDN
 # Consumers still pointing at the old cdn.atriarch.systems/lgsm/... URLs 404
 # and use their GitHub fallbacks until repointed to the File/agent/o/ shape.
 #
-# NOTE: uploads currently target the seaweedfs-s3 ingress directly over LAN
-# HTTP with a pinned Host header, because the apache gateway's s3 vhost serves
-# the apex-only certificate (missing the s3.atriarch.systems SAN). SigV4 never
-# transmits the secret key (HMAC signature only). Once the cert SAN is fixed,
-# switch S3_ENDPOINT to https://s3.atriarch.systems and drop --resolve.
+# Uploads go over HTTPS to s3.atriarch.systems (gateway cert includes the s3
+# SAN as of 2026-07-18); SigV4 never transmits the secret key.
 
 on:
   push:
@@ -29,8 +26,7 @@ jobs:
     if: github.repository == 'Atriarch-Systems/LinuxGSM'
     runs-on: [self-hosted, Linux, X64, amd64, arc-amd64]
     env:
-      S3_ENDPOINT: http://s3.atriarch.systems
-      S3_RESOLVE: s3.atriarch.systems:80:192.168.1.167
+      S3_ENDPOINT: https://s3.atriarch.systems
       S3_BUCKET: agent
       S3_PREFIX: public/lgsm
     steps:
@@ -48,7 +44,6 @@ jobs:
             local file="$1" key="$2" ctype="$3"
             local code
             code=$(curl -s -o /tmp/up-body.txt -w "%{http_code}" \
-              --resolve "${S3_RESOLVE}" \
               --aws-sigv4 "aws:amz:us-east-1:s3" --user "${AK}:${SK}" \
               -H "Content-Type: ${ctype}" \
               -T "${file}" "${S3_ENDPOINT}/${S3_BUCKET}/${S3_PREFIX}/${key}")

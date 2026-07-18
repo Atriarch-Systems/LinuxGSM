@@ -1,16 +1,19 @@
 name: Upload LinuxGSM Assets to CDN
-# Uploads key LinuxGSM files to the Atriarch CDN for use by docker builds
-# This prevents hitting GitHub raw URLs during container builds
+# Mirrors linuxgsm.sh + the dependency CSVs to the Atriarch CDN so container
+# builds/boots don't depend on GitHub raw (rate limits).
 #
-# Uses OAuth2 Client Credentials flow:
-# 1. Get access token from IdentityServer using CDN_CLIENT_ID and CDN_CLIENT_SECRET
-# 2. Use access token to upload files to CDN API
+# The CDN's legacy path-based upload plane (PUT /api/files/...) died with the
+# SeaweedFS migration - uploads now go to the S3 plane (bucket "agent", prefix
+# "public/"), and objects serve anonymously at:
+#   https://cdn.atriarch.systems/File/agent/o/lgsm/<path>
+# Consumers still pointing at the old cdn.atriarch.systems/lgsm/... URLs 404
+# and use their GitHub fallbacks until repointed to the File/agent/o/ shape.
 #
-# Required secrets:
-# - CDN_TOKEN_ENDPOINT: https://ids.atriarch.systems/connect/token
-# - CDN_CLIENT_ID: github-cdn-uploader
-# - CDN_CLIENT_SECRET: (the client secret)
-# - CDN_SCOPE: AtriarchCdn_Write
+# NOTE: uploads currently target the seaweedfs-s3 ingress directly over LAN
+# HTTP with a pinned Host header, because the apache gateway's s3 vhost serves
+# the apex-only certificate (missing the s3.atriarch.systems SAN). SigV4 never
+# transmits the secret key (HMAC signature only). Once the cert SAN is fixed,
+# switch S3_ENDPOINT to https://s3.atriarch.systems and drop --resolve.
 
 on:
   push:
@@ -18,90 +21,68 @@ on:
     paths:
       - 'linuxgsm.sh'
       - 'lgsm/data/**'
+      - '.github/workflows/upload-to-cdn.yml'
   workflow_dispatch:
 
 jobs:
   upload-to-cdn:
     if: github.repository == 'Atriarch-Systems/LinuxGSM'
     runs-on: [self-hosted, Linux, X64, amd64, arc-amd64]
+    env:
+      S3_ENDPOINT: http://s3.atriarch.systems
+      S3_RESOLVE: s3.atriarch.systems:80:192.168.1.167
+      S3_BUCKET: agent
+      S3_PREFIX: public/lgsm
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           ref: atriarch
 
-      - name: Get OAuth2 Access Token
-        id: get-token
+      - name: Upload linuxgsm.sh + data CSVs to CDN (S3 plane)
+        env:
+          AK: ${{ secrets.CDN_S3_ACCESS_KEY }}
+          SK: ${{ secrets.CDN_S3_SECRET_KEY }}
         run: |
-          # Get access token using client credentials flow
-          TOKEN_RESPONSE=$(curl -s -X POST "${{ secrets.CDN_TOKEN_ENDPOINT }}" \
-            -H "Content-Type: application/x-www-form-urlencoded" \
-            -d "grant_type=client_credentials" \
-            -d "client_id=${{ secrets.CDN_CLIENT_ID }}" \
-            -d "client_secret=${{ secrets.CDN_CLIENT_SECRET }}" \
-            -d "scope=${{ secrets.CDN_SCOPE }}")
-          
-          ACCESS_TOKEN=$(echo "$TOKEN_RESPONSE" | jq -r '.access_token')
-          
-          if [ "$ACCESS_TOKEN" == "null" ] || [ -z "$ACCESS_TOKEN" ]; then
-            echo "Failed to get access token"
-            echo "$TOKEN_RESPONSE"
-            exit 1
-          fi
-          
-          # Mask the token in logs
-          echo "::add-mask::$ACCESS_TOKEN"
-          echo "access_token=$ACCESS_TOKEN" >> $GITHUB_OUTPUT
-          echo "Successfully obtained access token"
-
-      - name: Upload linuxgsm.sh to CDN
-        run: |
-          echo "Uploading linuxgsm.sh..."
-          RESPONSE=$(curl -s -w "\n%{http_code}" -X PUT "https://cdn.atriarch.systems/api/files/lgsm/linuxgsm.sh" \
-            -H "Authorization: Bearer ${{ steps.get-token.outputs.access_token }}" \
-            -H "Content-Type: application/octet-stream" \
-            --data-binary @linuxgsm.sh)
-          
-          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
-          BODY=$(echo "$RESPONSE" | head -n -1)
-          
-          if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
-            echo "✓ linuxgsm.sh uploaded successfully"
-          else
-            echo "✗ Failed to upload linuxgsm.sh (HTTP $HTTP_CODE)"
-            echo "$BODY"
-          fi
-        continue-on-error: true
-
-      - name: Upload data CSV files to CDN
-        run: |
-          for file in lgsm/data/*.csv; do
-            if [ -f "$file" ]; then
-              filename=$(basename "$file")
-              echo "Uploading $filename..."
-              
-              RESPONSE=$(curl -s -w "\n%{http_code}" -X PUT "https://cdn.atriarch.systems/api/files/lgsm/data/$filename" \
-                -H "Authorization: Bearer ${{ steps.get-token.outputs.access_token }}" \
-                -H "Content-Type: text/csv" \
-                --data-binary @"$file")
-              
-              HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
-              
-              if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
-                echo "✓ $filename uploaded"
-              else
-                echo "✗ Failed to upload $filename (HTTP $HTTP_CODE)"
-              fi
+          upload() {
+            local file="$1" key="$2" ctype="$3"
+            local code
+            code=$(curl -s -o /tmp/up-body.txt -w "%{http_code}" \
+              --resolve "${S3_RESOLVE}" \
+              --aws-sigv4 "aws:amz:us-east-1:s3" --user "${AK}:${SK}" \
+              -H "Content-Type: ${ctype}" \
+              -T "${file}" "${S3_ENDPOINT}/${S3_BUCKET}/${S3_PREFIX}/${key}")
+            if [ "${code}" -ge 200 ] && [ "${code}" -lt 300 ]; then
+              echo "OK  ${key} (HTTP ${code})"
+            else
+              echo "FAIL ${key} (HTTP ${code})"
+              head -c 300 /tmp/up-body.txt; echo ""
+              return 1
             fi
+          }
+
+          fails=0
+          upload linuxgsm.sh linuxgsm.sh application/octet-stream || fails=$((fails+1))
+          for file in lgsm/data/*.csv; do
+            [ -f "$file" ] || continue
+            upload "$file" "data/$(basename "$file")" text/csv || fails=$((fails+1))
           done
+
+          echo ""
+          echo "Verifying via the public CDN read path..."
+          curl -fsS -o /dev/null "https://cdn.atriarch.systems/File/agent/o/lgsm/linuxgsm.sh" \
+            && echo "OK  cdn.atriarch.systems/File/agent/o/lgsm/linuxgsm.sh" \
+            || { echo "FAIL public read-back"; fails=$((fails+1)); }
+
+          [ "${fails}" -eq 0 ]
         continue-on-error: true
 
       - name: Summary
         run: |
           echo "## CDN Upload Complete" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "The following files have been uploaded to cdn.atriarch.systems:" >> $GITHUB_STEP_SUMMARY
-          echo "- /lgsm/linuxgsm.sh" >> $GITHUB_STEP_SUMMARY
-          echo "- /lgsm/data/*.csv (dependency lists)" >> $GITHUB_STEP_SUMMARY
+          echo "Files mirrored to the CDN S3 plane, served at:" >> $GITHUB_STEP_SUMMARY
+          echo "- https://cdn.atriarch.systems/File/agent/o/lgsm/linuxgsm.sh" >> $GITHUB_STEP_SUMMARY
+          echo "- https://cdn.atriarch.systems/File/agent/o/lgsm/data/*.csv" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "If CDN upload failed, builds will fall back to Atriarch-Systems/LinuxGSM GitHub URLs." >> $GITHUB_STEP_SUMMARY
+          echo "On upload failure, builds keep using Atriarch-Systems/LinuxGSM GitHub raw URLs." >> $GITHUB_STEP_SUMMARY
